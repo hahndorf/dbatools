@@ -103,7 +103,7 @@ $scriptBlock = {
             try {
                 [Reflection.Assembly]::LoadFrom($assemblyPath)
             } catch {
-                Write-Error "Could not import $assemblyPath : $($_ | Out-String)"
+                Write-Warning "Could not import $assemblyPath : $($_ | Out-String)"
             }
         }
     }
@@ -122,7 +122,7 @@ $scriptBlock = {
             try {
                 [Reflection.Assembly]::LoadFrom($assemblyPath)
             } catch {
-                Write-Error "Could not import $assemblyPath : $($_ | Out-String)"
+                Write-Warning "Could not import $assemblyPath : $($_ | Out-String)"
             }
         }
     }
