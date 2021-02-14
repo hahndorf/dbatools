@@ -52,6 +52,9 @@ function Export-DbaCredential {
         Copyright: (c) 2018 by dbatools, licensed under MIT
         License: MIT https://opensource.org/licenses/MIT
 
+    .LINK
+        https://dbatools.io/Export-DbaCredential
+
     .EXAMPLE
         PS C:\> Export-DbaCredential -SqlInstance sql2017 -Path C:\temp\cred.sql
 
@@ -90,7 +93,7 @@ function Export-DbaCredential {
         if (Test-Bound -ParameterName SqlInstance) {
             foreach ($instance in $SqlInstance) {
                 try {
-                    $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $sqlcredential -MinimumVersion 9
+                    $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $SqlCredential -MinimumVersion 9
 
                     $serverCreds = $server.Credentials
                     if (Test-Bound -ParameterName Identity) {

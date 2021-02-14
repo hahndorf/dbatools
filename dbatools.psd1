@@ -11,7 +11,7 @@
     RootModule             = 'dbatools.psm1'
 
     # Version number of this module.
-    ModuleVersion          = '1.0.51'
+    ModuleVersion          = '1.0.137'
 
     # ID used to uniquely identify this module
     GUID                   = '9d139310-ce45-41ce-8e8b-d76335aa1789'
@@ -135,6 +135,7 @@
         'Get-DbaLastBackup',
         'Connect-DbaInstance',
         'Get-DbaDbBackupHistory',
+        'Get-DbaAgBackupHistory',
         'Read-DbaBackupHeader',
         'Test-DbaLastBackup',
         'Get-DbaMaxMemory',
@@ -492,6 +493,16 @@
         'Export-DbaDbRole',
         'Export-DbaServerRole',
         'Add-DbaServerRoleMember',
+        'Get-DbaDbAsymmetricKey',
+        'New-DbaDbAsymmetricKey',
+        'Remove-DbaDbAsymmetricKey',
+        'Invoke-DbaDbTransfer',
+        'New-DbaDbTransfer',
+        'Remove-DbaDbData',
+        'Test-DbaDbQueryStore',
+        'Install-DbaMultiTool',
+        'Remove-DbaAgentOperator',
+        'Remove-DbaDbTableData',
         # noncoresmo
         # SMO issues
         'Export-DbaUser',
@@ -512,6 +523,9 @@
         'Test-DbaRepLatency',
         'Export-DbaRepServerSetting',
         'Get-DbaRepServer',
+        'Export-DbaSysDbUserObject',
+        'Move-DbaDbFile'
+        'New-DbaAgentOperator',
         # windowsonly
         # solvable filesystem issues or other workarounds
         'Install-DbaSqlWatch',
@@ -523,6 +537,7 @@
         'Get-DbaAgentJobOutputFile',
         'Set-DbaAgentJobOutputFile',
         'Get-DbaBuildReference',
+        'Update-DbaBuildReference',
         'New-DbaDacProfile'
         'Import-DbaXESessionTemplate',
         'Export-DbaXESessionTemplate',
@@ -536,6 +551,8 @@
         'Test-DbaMaxMemory', # can be fixed by not testing remote when linux is detected
         'Rename-DbaDatabase', # can maybebe fixed by not remoting when linux is detected
         # CM and Windows functions
+        'Get-DbaExtendedProtection',
+        'Set-DbaExtendedProtection',
         'Install-DbaInstance',
         'Invoke-DbaAdvancedInstall',
         'Update-DbaInstance',
@@ -595,6 +612,10 @@
         'Enable-DbaForceNetworkEncryption',
         'Disable-DbaForceNetworkEncryption',
         'Get-DbaForceNetworkEncryption',
+        'Get-DbaHideInstance',
+        'Enable-DbaHideInstance',
+        'Disable-DbaHideInstance',
+        'New-DbaComputerCertificateSigningRequest',
         'Remove-DbaComputerCertificate',
         'New-DbaComputerCertificate',
         'Get-DbaComputerCertificate',
@@ -602,6 +623,7 @@
         'Backup-DbaComputerCertificate',
         'Get-DbaNetworkCertificate',
         'Set-DbaNetworkCertificate',
+        'Remove-DbaDbLogshipping',
         'Invoke-DbaDbLogShipping',
         'New-DbaCmConnection',
         'Get-DbaCmConnection',
@@ -647,10 +669,14 @@
         'Get-DbatoolsConfig',
         'Get-DbatoolsConfigValue',
         'Register-DbatoolsConfig',
+        # Managed Path Commands
+        'Get-DbatoolsPath',
+        'Set-DbatoolsPath',
         # Unknown
         'Get-DbaErrorLog',
         'Get-DbaManagementObject',
-        'Test-DbaManagementObject'
+        'Test-DbaManagementObject',
+        'Copy-DbaDbViewData'
     )
 
     # Cmdlets to export from this module

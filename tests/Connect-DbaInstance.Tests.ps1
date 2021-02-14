@@ -11,6 +11,11 @@ Describe "$CommandName Unit Tests" -Tag 'UnitTests' {
             (@(Compare-Object -ReferenceObject ($knownParameters | Where-Object { $_ }) -DifferenceObject $params).Count ) | Should Be 0
         }
     }
+    Context "Validate alias" {
+        It "Should contain the alias: cdi" {
+            (Get-Alias cdi) | Should -Not -BeNullOrEmpty
+        }
+    }
 }
 
 Describe "$commandname Integration Tests" -Tags "IntegrationTests" {
@@ -70,6 +75,30 @@ Describe "$commandname Integration Tests" -Tags "IntegrationTests" {
 
         It "connects using a connection string" {
             $server = Connect-DbaInstance -SqlInstance "Data Source=$script:instance1;Initial Catalog=tempdb;Integrated Security=True;"
+            $server.Databases.Name.Count -gt 0 | Should Be $true
+        }
+
+        It "connects using a connection object" {
+            [System.Data.SqlClient.SqlConnection]$sqlconnection = "Data Source=$script:instance1;Initial Catalog=tempdb;Integrated Security=True;"
+            $server = Connect-DbaInstance -SqlInstance $sqlconnection
+            $server.ComputerName -eq ([DbaInstance]$script:instance1).ComputerName | Should Be $true
+            $server.Databases.Name.Count -gt 0 | Should Be $true
+        }
+
+        It "connects - instance2" {
+            $server = Connect-DbaInstance -SqlInstance $script:instance2
+            $server.Databases.Name.Count -gt 0 | Should Be $true
+        }
+
+        It "connects using a connection string - instance2" {
+            $server = Connect-DbaInstance -SqlInstance "Data Source=$script:instance2;Initial Catalog=tempdb;Integrated Security=True;"
+            $server.Databases.Name.Count -gt 0 | Should Be $true
+        }
+
+        It "connects using a connection object - instance2" {
+            [System.Data.SqlClient.SqlConnection]$sqlconnection = "Data Source=$script:instance2;Initial Catalog=tempdb;Integrated Security=True;"
+            $server = Connect-DbaInstance -SqlInstance $sqlconnection
+            $server.ComputerName -eq ([DbaInstance]$script:instance2).ComputerName | Should Be $true
             $server.Databases.Name.Count -gt 0 | Should Be $true
         }
 

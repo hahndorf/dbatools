@@ -36,7 +36,7 @@ function Find-DbaCommand {
         Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
 
     .NOTES
-        Tags: Find, Help, Command
+        Tags: Module, Find
         Author: Simone Bizzotto (@niphlod)
 
         Website: https://dbatools.io
@@ -80,7 +80,6 @@ function Find-DbaCommand {
         PS C:\> Find-DbaCommand -Pattern snapshot -Rebuild
 
         Finds all commands searching the entire help for "snapshot", rebuilding the index (good for developers)
-
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param (
@@ -93,90 +92,11 @@ function Find-DbaCommand {
         [switch]$EnableException
     )
     begin {
-        function Get-DbaTrimmedString($Text) {
-            return $Text.Trim() -replace '(\r\n){2,}', "`n"
-        }
-
-        $tagsRex = ([regex]'(?m)^[\s]{0,15}Tags:(.*)$')
-        $authorRex = ([regex]'(?m)^[\s]{0,15}Author:(.*)$')
-        $minverRex = ([regex]'(?m)^[\s]{0,15}MinimumVersion:(.*)$')
-        $maxverRex = ([regex]'(?m)^[\s]{0,15}MaximumVersion:(.*)$')
-
-        function Get-DbaHelp([String]$commandName) {
-            $availability = 'Windows, Linux, macOS'
-            if ($commandName -in $script:noncoresmo -or $commandName -in $script:windowsonly) {
-                $availability = 'Windows only'
-            }
-            $thishelp = Get-Help $commandName -Full
-            $thebase = @{ }
-            $thebase.CommandName = $commandName
-            $thebase.Name = $thishelp.Name
-
-            $thebase.Availability = $availability
-
-            $alias = Get-Alias -Definition $commandName -ErrorAction SilentlyContinue
-            $thebase.Alias = $alias.Name -Join ','
-
-            ## fetch the description
-            $thebase.Description = $thishelp.Description.Text
-
-            ## fetch examples
-            $thebase.Examples = Get-DbaTrimmedString -Text ($thishelp.Examples | Out-String -Width 200)
-
-            ## fetch help link
-            $thebase.Links = ($thishelp.relatedLinks).NavigationLink.Uri
-
-            ## fetch the synopsis
-            $thebase.Synopsis = $thishelp.Synopsis
-
-            ## fetch the syntax
-            $thebase.Syntax = Get-DbaTrimmedString -Text ($thishelp.Syntax | Out-String -Width 600)
-
-            ## store notes
-            $as = $thishelp.AlertSet | Out-String -Width 600
-
-            ## fetch the tags
-            $tags = $tagsrex.Match($as).Groups[1].Value
-            if ($tags) {
-                $thebase.Tags = $tags.Split(',').Trim()
-            }
-            ## fetch the author
-            $author = $authorRex.Match($as).Groups[1].Value
-            if ($author) {
-                $thebase.Author = $author.Trim()
-            }
-
-            ## fetch MinimumVersion
-            $MinimumVersion = $minverRex.Match($as).Groups[1].Value
-            if ($MinimumVersion) {
-                $thebase.MinimumVersion = $MinimumVersion.Trim()
-            }
-
-            ## fetch MaximumVersion
-            $MaximumVersion = $maxverRex.Match($as).Groups[1].Value
-            if ($MaximumVersion) {
-                $thebase.MaximumVersion = $MaximumVersion.Trim()
-            }
-
-            ## fetch Parameters
-            $parameters = $thishelp.parameters.parameter
-            $command = Get-Command $commandName
-            $params = @()
-            foreach ($p in $parameters) {
-                $paramAlias = $command.parameters[$p.Name].Aliases
-                $paramDescr = Get-DbaTrimmedString -Text ($p.Description | Out-String -Width 200)
-                $params += , @($p.Name, $paramDescr, ($paramAlias -Join ','), ($p.Required -eq $true), $p.PipelineInput, $p.DefaultValue)
-            }
-
-            $thebase.Params = $params
-
-            [pscustomobject]$thebase
-        }
-
         function Get-DbaIndex() {
             if ($Pscmdlet.ShouldProcess($dest, "Recreating index")) {
                 $dbamodule = Get-Module -Name dbatools
-                $allCommands = $dbamodule.ExportedCommands.Values | Where-Object CommandType -EQ 'Function'
+                $allCommands = $dbamodule.ExportedCommands.Values | Where-Object CommandType -In 'Function', 'Cmdlet' | Sort-Object -Property Name | Select-Object -Unique
+                #Had to add Unique because Select-DbaObject was getting populated twice once written to the index file
 
                 $helpcoll = New-Object System.Collections.Generic.List[System.Object]
                 foreach ($command in $allCommands) {

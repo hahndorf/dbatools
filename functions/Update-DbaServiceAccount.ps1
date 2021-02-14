@@ -47,6 +47,9 @@ function Update-DbaServiceAccount {
         This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
         Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
 
+    .LINK
+        https://dbatools.io/Update-DbaServiceAccount
+
     .NOTES
         Tags: Service, SqlServer, Instance, Connect
         Author: Kirill Kravtsov (@nvarscar)
@@ -59,7 +62,7 @@ function Update-DbaServiceAccount {
 
     .EXAMPLE
         PS C:\> $SecurePassword = ConvertTo-SecureString 'Qwerty1234' -AsPlainText -Force
-        Update-DbaServiceAccount -ComputerName sql1 -ServiceName 'MSSQL$MYINSTANCE' -SecurePassword $SecurePassword
+        PS C:\> Update-DbaServiceAccount -ComputerName sql1 -ServiceName 'MSSQL$MYINSTANCE' -SecurePassword $SecurePassword
 
         Changes the current service account's password of the service MSSQL$MYINSTANCE to 'Qwerty1234'
 
@@ -151,10 +154,10 @@ function Update-DbaServiceAccount {
         if ($PsCmdlet.ParameterSetName -match 'ServiceName') {
             foreach ($Computer in $ComputerName.ComputerName) {
                 $Server = Resolve-DbaNetworkName -ComputerName $Computer -Credential $credential
-                if ($Server.ComputerName) {
+                if ($Server.FullComputerName) {
                     foreach ($service in $ServiceName) {
                         $svcCollection += [psobject]@{
-                            ComputerName = $server.ComputerName
+                            ComputerName = $server.FullComputerName
                             ServiceName  = $service
                         }
                     }
@@ -164,14 +167,18 @@ function Update-DbaServiceAccount {
             }
         } elseif ($PsCmdlet.ParameterSetName -match 'InputObject') {
             foreach ($service in $InputObject) {
-                $Server = Resolve-DbaNetworkName -ComputerName $service.ComputerName -Credential $credential
-                if ($Server.ComputerName) {
-                    $svcCollection += [psobject]@{
-                        ComputerName = $Server.ComputerName
-                        ServiceName  = $service.ServiceName
-                    }
+                if ($service.ServiceName -eq 'PowerBIReportServer') {
+                    Stop-Function -Message "PowerBIReportServer service is not supported, skipping." -Continue
                 } else {
-                    Stop-Function -EnableException $EnableException -Message "Failed to connect to $($service.ComputerName)" -Continue
+                    $Server = Resolve-DbaNetworkName -ComputerName $service.ComputerName -Credential $credential
+                    if ($Server.FullComputerName) {
+                        $svcCollection += [psobject]@{
+                            ComputerName = $Server.FullComputerName
+                            ServiceName  = $service.ServiceName
+                        }
+                    } else {
+                        Stop-Function -EnableException $EnableException -Message "Failed to connect to $($service.FullComputerName)" -Continue
+                    }
                 }
             }
         }
@@ -210,7 +217,7 @@ function Update-DbaServiceAccount {
                     } catch {
                         $outStatus = 'Failed'
                         $outMessage = $_.Exception.Message
-                        Write-Message -Level Warning -Message $_.Exception.Message -EnableException $EnableException.ToBool()
+                        Stop-Function -Message $outMessage -Continue
                     }
                 } else {
                     $outStatus = 'Successful'

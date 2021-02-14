@@ -44,6 +44,9 @@ function Backup-DbaServiceMasterKey {
         Copyright: (c) 2018 by dbatools, licensed under MIT
         License: MIT https://opensource.org/licenses/MIT
 
+    .LINK
+        https://dbatools.io/Backup-DbaServiceMasterKey
+
     .EXAMPLE
         PS C:\> Backup-DbaServiceMasterKey -SqlInstance server1\sql2016
         ```
@@ -81,7 +84,7 @@ function Backup-DbaServiceMasterKey {
     process {
         foreach ($instance in $SqlInstance) {
             try {
-                $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $sqlcredential
+                $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $SqlCredential
             } catch {
                 Stop-Function -Message "Error occurred while establishing connection to $instance" -Category ConnectionError -ErrorRecord $_ -Target $instance -Continue
             }

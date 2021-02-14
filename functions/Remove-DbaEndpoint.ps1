@@ -39,6 +39,7 @@ function Remove-DbaEndpoint {
     .NOTES
         Tags: Endpoint
         Author: Chrissy LeMaire (@cl), netnerds.net
+
         Website: https://dbatools.io
         Copyright: (c) 2018 by dbatools, licensed under MIT
         License: MIT https://opensource.org/licenses/MIT
@@ -65,7 +66,7 @@ function Remove-DbaEndpoint {
     param (
         [DbaInstanceParameter[]]$SqlInstance,
         [PSCredential]$SqlCredential,
-        [string[]]$EndPoint,
+        [string[]]$Endpoint,
         [switch]$AllEndpoints,
         [parameter(ValueFromPipeline)]
         [Microsoft.SqlServer.Management.Smo.Endpoint[]]$InputObject,
@@ -77,7 +78,7 @@ function Remove-DbaEndpoint {
             return
         }
         foreach ($instance in $SqlInstance) {
-            $InputObject += Get-DbaEndpoint -SqlInstance $instance -SqlCredential $SqlCredential -EndPoint $Endpoint
+            $InputObject += Get-DbaEndpoint -SqlInstance $instance -SqlCredential $SqlCredential -Endpoint $Endpoint
         }
 
         foreach ($ep in $InputObject) {

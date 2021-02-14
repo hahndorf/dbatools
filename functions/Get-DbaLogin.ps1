@@ -2,6 +2,7 @@ function Get-DbaLogin {
     <#
     .SYNOPSIS
         Function to get an SMO login object of the logins for a given SQL Server instance. Takes a server object from the pipeline.
+        SQL Azure DB is not supported.
 
     .DESCRIPTION
         The Get-DbaLogin function returns an SMO Login object for the logins passed, if there are no users passed it will return all logins.
@@ -20,7 +21,7 @@ function Get-DbaLogin {
         The login(s) to process - this list is auto-populated from the server. If unspecified, all logins will be processed.
 
     .PARAMETER ExcludeLogin
-        The login(s) to exclude - this list is auto-populated from the server
+        The login(s) to exclude. Options for this list are auto-populated from the server.
 
     .PARAMETER IncludeFilter
         A list of logins to include - accepts wildcard patterns
@@ -39,6 +40,9 @@ function Get-DbaLogin {
 
     .PARAMETER Disabled
         A Switch to return disabled Logins.
+
+    .PARAMETER MustChangePassword
+        A Switch to return Logins that need to change password.
 
     .PARAMETER SqlLogins
         Deprecated. Please use -Type SQL
@@ -143,6 +147,10 @@ function Get-DbaLogin {
 
         Get all user objects from server sql2016 that are SQL Logins. Get additional info for login available from LoginProperty function
 
+.EXAMPLE
+        PS C:\> 'sql2016', 'sql2014' | Get-DbaLogin -SqlCredential $sqlcred -MustChangePassword
+
+        Using Get-DbaLogin on the pipeline to get all logins that must change password on servers sql2016 and sql2014.
 #>
     [CmdletBinding()]
     param (
@@ -160,6 +168,7 @@ function Get-DbaLogin {
         [switch]$HasAccess,
         [switch]$Locked,
         [switch]$Disabled,
+        [switch]$MustChangePassword,
         [switch]$Detailed,
         [switch]$EnableException
     )
@@ -173,20 +182,20 @@ function Get-DbaLogin {
 
         $loginTimeSql = "SELECT login_name, MAX(login_time) AS login_time FROM sys.dm_exec_sessions GROUP BY login_name"
         $loginProperty = "SELECT
-                            LOGINPROPERTY ('<#LoginName#>' , 'BadPasswordCount') as BadPasswordCount ,
-                            LOGINPROPERTY ('<#LoginName#>' , 'BadPasswordTime') as BadPasswordTime,
-                            LOGINPROPERTY ('<#LoginName#>' , 'DaysUntilExpiration') as DaysUntilExpiration,
-                            LOGINPROPERTY ('<#LoginName#>' , 'HistoryLength') as HistoryLength,
-                            LOGINPROPERTY ('<#LoginName#>' , 'IsMustChange') as IsMustChange,
-                            LOGINPROPERTY ('<#LoginName#>' , 'LockoutTime') as LockoutTime,
-                            CONVERT (varchar(514),  (LOGINPROPERTY('<#LoginName#>', 'PasswordHash')),1) as PasswordHash,
-                            LOGINPROPERTY ('<#LoginName#>' , 'PasswordLastSetTime') as PasswordLastSetTime"
+                            LOGINPROPERTY ('/*LoginName*/' , 'BadPasswordCount') as BadPasswordCount ,
+                            LOGINPROPERTY ('/*LoginName*/' , 'BadPasswordTime') as BadPasswordTime,
+                            LOGINPROPERTY ('/*LoginName*/' , 'DaysUntilExpiration') as DaysUntilExpiration,
+                            LOGINPROPERTY ('/*LoginName*/' , 'HistoryLength') as HistoryLength,
+                            LOGINPROPERTY ('/*LoginName*/' , 'IsMustChange') as IsMustChange,
+                            LOGINPROPERTY ('/*LoginName*/' , 'LockoutTime') as LockoutTime,
+                            CONVERT (varchar(514),  (LOGINPROPERTY('/*LoginName*/', 'PasswordHash')),1) as PasswordHash,
+                            LOGINPROPERTY ('/*LoginName*/' , 'PasswordLastSetTime') as PasswordLastSetTime"
     }
     process {
         foreach ($instance in $SqlInstance) {
 
             try {
-                $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $SqlCredential
+                $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $SqlCredential -AzureUnsupported
             } catch {
                 Stop-Function -Message "Error occurred while establishing connection to $instance" -Category ConnectionError -ErrorRecord $_ -Target $instance -Continue
             }
@@ -241,6 +250,10 @@ function Get-DbaLogin {
                 $serverLogins = $serverLogins | Where-Object IsDisabled
             }
 
+            if ($MustChangePassword) {
+                $serverLogins = $serverLogins | Where-Object MustChangePassword
+            }
+
             # There's no reliable method to get last login time with SQL Server 2000, so only show on 2005+
             if ($server.VersionMajor -gt 9) {
                 Write-Message -Level Verbose -Message "Getting last login times"
@@ -260,7 +273,7 @@ function Get-DbaLogin {
 
                 if ($Detailed) {
                     $loginName = $serverLogin.name
-                    $query = $loginProperty.Replace('<#LoginName#>', "$loginName")
+                    $query = $loginProperty.Replace('/*LoginName*/', "$loginName")
                     $loginProperties = $server.ConnectionContext.ExecuteWithResults($query).Tables[0]
                     Add-Member -Force -InputObject $serverLogin -MemberType NoteProperty -Name BadPasswordCount -Value $loginProperties.BadPasswordCount
                     Add-Member -Force -InputObject $serverLogin -MemberType NoteProperty -Name BadPasswordTime -Value $loginProperties.BadPasswordTime
@@ -271,7 +284,7 @@ function Get-DbaLogin {
                     Add-Member -Force -InputObject $serverLogin -MemberType NoteProperty -Name PasswordHash -Value $loginProperties.PasswordHash
                     Add-Member -Force -InputObject $serverLogin -MemberType NoteProperty -Name PasswordLastSetTime -Value $loginProperties.PasswordLastSetTime
                 }
-                Select-DefaultView -InputObject $serverLogin -Property ComputerName, InstanceName, SqlInstance, Name, LoginType, CreateDate, LastLogin, HasAccess, IsLocked, IsDisabled
+                Select-DefaultView -InputObject $serverLogin -Property ComputerName, InstanceName, SqlInstance, Name, LoginType, CreateDate, LastLogin, HasAccess, IsLocked, IsDisabled, MustChangePassword
             }
         }
     }

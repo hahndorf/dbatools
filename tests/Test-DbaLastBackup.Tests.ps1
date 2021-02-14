@@ -4,11 +4,11 @@ Write-Host -Object "Running $PSCommandPath" -ForegroundColor Cyan
 
 Describe "$CommandName Unit Tests" -Tag 'UnitTests' {
     Context "Validate parameters" {
-        [object[]]$params = (Get-Command $CommandName).Parameters.Keys | Where-Object {$_ -notin ('whatif', 'confirm')}
-        [object[]]$knownParameters = 'SqlInstance', 'SqlCredential', 'Database', 'ExcludeDatabase', 'Destination', 'DestinationCredential', 'DataDirectory', 'LogDirectory', 'Prefix', 'VerifyOnly', 'NoCheck', 'NoDrop', 'CopyFile', 'CopyPath', 'MaxSize', 'IncludeCopyOnly', 'IgnoreLogBackup', 'AzureCredential', 'InputObject', 'EnableException'
+        [object[]]$params = (Get-Command $CommandName).Parameters.Keys | Where-Object { $_ -notin ('whatif', 'confirm') }
+        [object[]]$knownParameters = 'SqlInstance', 'SqlCredential', 'Database', 'ExcludeDatabase', 'Destination', 'DestinationCredential', 'DataDirectory', 'LogDirectory', 'Prefix', 'VerifyOnly', 'NoCheck', 'NoDrop', 'CopyFile', 'CopyPath', 'MaxSize', 'MaxDop', 'IncludeCopyOnly', 'IgnoreLogBackup', 'AzureCredential', 'InputObject', 'EnableException', 'DeviceType', 'MaxTransferSize', 'BufferCount', 'IgnoreDiffBackup'
         $knownParameters += [System.Management.Automation.PSCmdlet]::CommonParameters
         It "Should only contain our specific parameters" {
-            (@(Compare-Object -ReferenceObject ($knownParameters | Where-Object {$_}) -DifferenceObject $params).Count ) | Should Be 0
+            (@(Compare-Object -ReferenceObject ($knownParameters | Where-Object { $_ }) -DifferenceObject $params).Count ) | Should Be 0
         }
     }
 }
@@ -77,6 +77,18 @@ Describe "$CommandName Integration Tests" -Tags "IntegrationTests" {
         }
     }
 
+    Context "Test Ignoring Diff Backups" {
+        $results = Test-DbaLastBackup -SqlInstance $script:instance1 -Database $testlastbackup -IgnoreDiffBackup
+
+        It "Should return success" {
+            $results.RestoreResult | Should Be "Success"
+        }
+
+        It "Should tno contain a diff backup" {
+            ($results.BackupFiles | Where-Object { $_ -like '*diff*' }).count | Should -Be 0
+        }
+    }
+
     Context "Test dbsize skip and cleanup (Issue 3968)" {
         $results1 = Restore-DbaDatabase -SqlInstance $script:instance1 -Database bigtestrest -Path $script:appveyorlabrepo\sql2008-backups\db1\FULL -ReplaceDbNameInFile
         Backup-DbaDatabase -SqlInstance $script:instance1 -Database bigtestrest
@@ -84,7 +96,7 @@ Describe "$CommandName Integration Tests" -Tags "IntegrationTests" {
         Backup-DbaDatabase -SqlInstance $script:instance1 -Database smalltestrest
 
         $results = Test-DbaLastBackup -SqlInstance $script:instance1 -Database bigtestrest, smalltestrest -CopyFile -CopyPath c:\temp -MaxSize 3 -Prefix testlast
-        $fileresult = Get-ChildItem c:\temp | Where-Object {$_.name -like '*bigtestrest'}
+        $fileresult = Get-ChildItem c:\temp | Where-Object { $_.name -like '*bigtestrest' }
         It "Should have skipped bigtestrest and tested smalltestrest" {
             $results[0].RestoreResult | Should -BeLike '*exceeds the specified maximum*'
             $results[0].DbccResult | Should -Be 'Skipped'

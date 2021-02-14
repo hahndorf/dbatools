@@ -18,7 +18,7 @@ function Get-DbaClientAlias {
         Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
 
     .NOTES
-        Tags: Alias
+        Tags: Server, Management
         Author: Chrissy LeMaire (@cl), netnerds.net
 
         Website: https://dbatools.io
@@ -47,7 +47,6 @@ function Get-DbaClientAlias {
         PS C:\> 'Server1', 'Server2' | Get-DbaClientAlias
 
         Gets all SQL Server client aliases on Server1 and Server2
-
     #>
     [CmdletBinding()]
     param (
@@ -57,7 +56,7 @@ function Get-DbaClientAlias {
         [switch]$EnableException
     )
     begin {
-        $scriptblock = {
+        $scriptBlock = {
             function Get-ItemPropertyValue {
                 param (
                     [parameter()]
@@ -116,7 +115,7 @@ function Get-DbaClientAlias {
     process {
         foreach ($computer in $ComputerName) {
             try {
-                Invoke-Command2 -ComputerName $computer -Credential $Credential -ScriptBlock $scriptblock -ErrorAction Stop
+                Invoke-Command2 -ComputerName $computer -Credential $Credential -ScriptBlock $scriptBlock -ErrorAction Stop
             } catch {
                 Stop-Function -Message "Failure" -ErrorRecord $_ -Target $computer -Continue
             }

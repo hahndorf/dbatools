@@ -80,6 +80,9 @@ function Export-DbaLogin {
         -- UTF8: Encodes in UTF-8 format.
         -- Unknown: The encoding type is unknown or invalid. The data can be treated as binary.
 
+    .PARAMETER ObjectLevel
+        Include object-level permissions for each user associated with copied login.
+
     .PARAMETER EnableException
         By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
         This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
@@ -128,7 +131,8 @@ function Export-DbaLogin {
         Exports ONLY logins FROM sqlserver2014a with permissions on databases HR and Accounting
 
     .EXAMPLE
-        PS C:\> Export-DbaLogin -SqlInstance sqlserver2008 -Login realcajun, netnerds -Path C:\temp\login.sql -ExcludeGoBatchSeparator
+        PS C:\> Set-DbatoolsConfig -FullName formatting.batchseparator -Value $null
+        PS C:\> Export-DbaLogin -SqlInstance sqlserver2008 -Login realcajun, netnerds -Path C:\temp\login.sql
 
         Exports ONLY logins netnerds and realcajun FROM sqlserver2008 server, to the C:\temp\login.sql file without the 'GO' batch separator.
 
@@ -172,10 +176,11 @@ function Export-DbaLogin {
         [switch]$NoClobber,
         [switch]$Append,
         [string]$BatchSeparator = (Get-DbatoolsConfigValue -FullName 'Formatting.BatchSeparator'),
-        [ValidateSet('SQLServer2000', 'SQLServer2005', 'SQLServer2008/2008R2', 'SQLServer2012', 'SQLServer2014', 'SQLServer2016', 'SQLServer2017')]
+        [ValidateSet('SQLServer2000', 'SQLServer2005', 'SQLServer2008/2008R2', 'SQLServer2012', 'SQLServer2014', 'SQLServer2016', 'SQLServer2017', 'SQLServer2019')]
         [string]$DestinationVersion,
         [switch]$NoPrefix,
         [switch]$Passthru,
+        [switch]$ObjectLevel,
         [switch]$EnableException
     )
 
@@ -205,11 +210,11 @@ function Export-DbaLogin {
             switch ($inputType) {
                 'Sqlcollaborative.Dbatools.Parameter.DbaInstanceParameter' {
                     Write-Message -Level Verbose -Message "Processing Server through InputObject"
-                    $server = Connect-SqlInstance -SqlInstance $input -SqlCredential $sqlcredential
+                    $server = Connect-SqlInstance -SqlInstance $input -SqlCredential $SqlCredential
                 }
                 'Microsoft.SqlServer.Management.Smo.Server' {
                     Write-Message -Level Verbose -Message "Processing Server through InputObject"
-                    $server = Connect-SqlInstance -SqlInstance $input -SqlCredential $sqlcredential
+                    $server = Connect-SqlInstance -SqlInstance $input -SqlCredential $SqlCredential
                 }
                 'Microsoft.SqlServer.Management.Smo.Database' {
                     Write-Message -Level Verbose -Message "Processing Database through InputObject"
@@ -261,7 +266,7 @@ function Export-DbaLogin {
 
             if ($Login) {
                 if ($Login[0].GetType().FullName -eq 'Microsoft.SqlServer.Management.Smo.Login') {
-                    $serverLogins = $serverLogins | Where-Object { $_ -in $Login }
+                    $serverLogins = $serverLogins | Where-Object { $_.Name -in $Login.Name }
                 } else {
                     $serverLogins = $serverLogins | Where-Object { $_.Name -in $Login }
                 }
@@ -296,7 +301,7 @@ function Export-DbaLogin {
                         Write-Message -Level Verbose -Message "Exporting $userName"
                     }
 
-                    $outsql += "`r`nUSE master`n"
+                    $outsql += "`r`nUSE master`r`n"
                     # Getting some attributes
                     if ($DefaultDatabase) {
                         $defaultDb = $DefaultDatabase
@@ -403,7 +408,7 @@ function Export-DbaLogin {
 
                     foreach ($ownedJob in $ownedJobs) {
                         $ownedJob = $ownedJob -replace ("'", "''")
-                        $outsql += "`n`rUSE msdb`n"
+                        $outsql += "`r`nUSE msdb`r`n"
                         $outsql += "EXEC msdb.dbo.sp_update_job @job_name=N'$ownedJob', @owner_login_name=N'$userName'"
                     }
                 }
@@ -413,7 +418,7 @@ function Export-DbaLogin {
                     # Securables: Connect SQL, View any database, Administer Bulk Operations, etc.
 
                     $perms = $server.EnumServerPermissions($userName)
-                    $outsql += "`n`rUSE master`n"
+                    $outsql += "`r`nUSE master`r`n"
                     foreach ($perm in $perms) {
                         $permState = $perm.permissionstate
                         $permType = $perm.PermissionType
@@ -454,43 +459,74 @@ function Export-DbaLogin {
                         $sourceDb = $server.Databases[$dbName]
                         $dbUserName = $db.username
 
-                        $outsql += "`r`nUSE [$dbName]`n"
-                        try {
-                            $sql = $server.Databases[$dbName].Users[$dbUserName].Script()
-                            $outsql += $sql
-                        } catch {
-                            Write-Message -Level Warning -Message "User cannot be found in selected database"
-                        }
+                        $outsql += "`r`nUSE [$dbName]`r`n"
 
-                        # Skipping updating dbowner
+                        if ($ObjectLevel) {
+                            # Exporting all permissions
+                            $scriptOptions = New-DbaScriptingOption
+                            $scriptVersion = $sourceDb.CompatibilityLevel
+                            $scriptOptions.TargetServerVersion = [Microsoft.SqlServer.Management.Smo.SqlServerVersion]::$scriptVersion
+                            $scriptOptions.AllowSystemObjects = $true
+                            $scriptOptions.IncludeDatabaseRoleMemberships = $true
+                            $scriptOptions.ContinueScriptingOnError = $false
+                            $scriptOptions.IncludeDatabaseContext = $false
+                            $scriptOptions.IncludeIfNotExists = $true
 
-                        # Database Roles: db_owner, db_datareader, etc
-                        foreach ($role in $sourceDb.Roles) {
-                            if ($role.EnumMembers() -contains $dbUserName) {
-                                $roleName = $role.Name
-                                if (($server.VersionMajor -lt 11 -and [string]::IsNullOrEmpty($destinationVersion)) -or ($DestinationVersion -in "SQLServer2000", "SQLServer2005", "SQLServer2008/2008R2")) {
-                                    $outsql += "EXEC sys.sp_addrolemember @rolename=N'$roleName', @membername=N'$dbUserName'"
-                                } else {
-                                    $outsql += "ALTER ROLE [$roleName] ADD MEMBER [$dbUserName]"
+                            $exportSplat = @{
+                                SqlInstance            = $server
+                                Database               = $dbName
+                                User                   = $dbUsername
+                                ScriptingOptionsObject = $scriptOptions
+                            }
+                            # remove batch separator if the $BatchSeparator string is empty
+                            if (-Not $BatchSeparator) {
+                                $scriptOptions.NoCommandTerminator = $true
+                                $exportSplat.ExcludeGoBatchSeparator = $true
+                            }
+                            try {
+                                $userScript = Export-DbaUser @exportSplat -Passthru -EnableException
+                                $outsql += $userScript
+                            } catch {
+                                Stop-Function -Message "Failed to extract permissions for user $dbUserName in database $dbName" -Continue -ErrorRecord $_
+                            }
+                        } else {
+                            try {
+                                $sql = $server.Databases[$dbName].Users[$dbUserName].Script()
+                                $outsql += $sql
+                            } catch {
+                                Write-Message -Level Warning -Message "User cannot be found in selected database"
+                            }
+
+                            # Skipping updating dbowner
+
+                            # Database Roles: db_owner, db_datareader, etc
+                            foreach ($role in $sourceDb.Roles) {
+                                if ($role.EnumMembers() -contains $dbUserName) {
+                                    $roleName = $role.Name
+                                    if (($server.VersionMajor -lt 11 -and [string]::IsNullOrEmpty($destinationVersion)) -or ($DestinationVersion -in "SQLServer2000", "SQLServer2005", "SQLServer2008/2008R2")) {
+                                        $outsql += "EXEC sys.sp_addrolemember @rolename=N'$roleName', @membername=N'$dbUserName'"
+                                    } else {
+                                        $outsql += "ALTER ROLE [$roleName] ADD MEMBER [$dbUserName]"
+                                    }
                                 }
                             }
-                        }
 
-                        # Connect, Alter Any Assembly, etc
-                        $perms = $sourceDb.EnumDatabasePermissions($dbUserName)
-                        foreach ($perm in $perms) {
-                            $permState = $perm.PermissionState
-                            $permType = $perm.PermissionType
-                            $grantor = $perm.Grantor
+                            # Connect, Alter Any Assembly, etc
+                            $perms = $sourceDb.EnumDatabasePermissions($dbUserName)
+                            foreach ($perm in $perms) {
+                                $permState = $perm.PermissionState
+                                $permType = $perm.PermissionType
+                                $grantor = $perm.Grantor
 
-                            if ($permState -eq "GrantWithGrant") {
-                                $grantWithGrant = "WITH GRANT OPTION"
-                                $permState = "GRANT"
-                            } else {
-                                $grantWithGrant = $null
+                                if ($permState -eq "GrantWithGrant") {
+                                    $grantWithGrant = "WITH GRANT OPTION"
+                                    $permState = "GRANT"
+                                } else {
+                                    $grantWithGrant = $null
+                                }
+
+                                $outsql += "$permState $permType TO [$userName] $grantWithGrant AS [$grantor]"
                             }
-
-                            $outsql += "$permState $permType TO [$userName] $grantWithGrant AS [$grantor]"
                         }
                     }
                 }
@@ -509,7 +545,7 @@ function Export-DbaLogin {
             if ($NoPrefix) {
                 $prefix = $null
             } else {
-                $prefix = "/*`n`tCreated by $executingUser using dbatools $commandName for objects on $($login.Instance) at $(Get-Date -Format (Get-DbatoolsConfigValue -FullName 'Formatting.DateTime'))`n`tSee https://dbatools.io/$commandName for more information`n*/"
+                $prefix = "/*`r`n`tCreated by $executingUser using dbatools $commandName for objects on $($login.Instance) at $(Get-Date -Format (Get-DbatoolsConfigValue -FullName 'Formatting.DateTime'))`r`n`tSee https://dbatools.io/$commandName for more information`r`n*/"
             }
 
             if ($BatchSeparator) {

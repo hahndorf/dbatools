@@ -67,24 +67,24 @@ function Resolve-DbaNetworkName {
         https://dbatools.io/Resolve-DbaNetworkName
 
     .EXAMPLE
-        PS C:\> Resolve-DbaNetworkName -ComputerName ServerA
+        PS C:\> Resolve-DbaNetworkName -ComputerName sql2014
 
-        Returns a custom object displaying InputName, ComputerName, IPAddress, DNSHostName, DNSDomain, Domain, DNSHostEntry, FQDN, DNSHostEntry for ServerA
-
-    .EXAMPLE
-        PS C:\> Resolve-DbaNetworkName -SqlInstance sql2016\sqlexpress
-
-        Returns a custom object displaying InputName, ComputerName, IPAddress, DNSHostName, DNSDomain, Domain, DNSHostEntry, FQDN, DNSHostEntry  for the SQL instance sql2016\sqlexpress
+        Returns a custom object displaying InputName, ComputerName, IPAddress, DNSHostName, DNSDomain, Domain, DNSHostEntry, FQDN, DNSHostEntry for sql2014
 
     .EXAMPLE
-        PS C:\> Resolve-DbaNetworkName -SqlInstance sql2016\sqlexpress, sql2014
+        PS C:\> Resolve-DbaNetworkName -ComputerName sql2016, sql2014
 
-        Returns a custom object displaying InputName, ComputerName, IPAddress, DNSHostName, DNSDomain, Domain, DNSHostEntry, FQDN, DNSHostEntry  for the SQL instance sql2016\sqlexpress and sql2014
+        Returns a custom object displaying InputName, ComputerName, IPAddress, DNSHostName, DNSDomain, Domain, DNSHostEntry, FQDN, DNSHostEntry for sql2016 and sql2014
 
     .EXAMPLE
         PS C:\> Get-DbaRegServer -SqlInstance sql2014 | Resolve-DbaNetworkName
 
-        Returns a custom object displaying InputName, ComputerName, IPAddress, DNSHostName, Domain, FQDN for all SQL Servers returned by Get-DbaRegServer
+        Returns a custom object displaying InputName, ComputerName, IPAddress, DNSHostName, DNSDomain, Domain, DNSHostEntry, FQDN, DNSHostEntry for all SQL Servers returned by Get-DbaRegServer
+
+    .EXAMPLE
+        PS C:\> Get-DbaRegServer -SqlInstance sql2014, sql2016\sqlexpress | Resolve-DbaNetworkName
+
+        Returns a custom object displaying InputName, ComputerName, IPAddress, DNSHostName, DNSDomain, Domain, DNSHostEntry, FQDN, DNSHostEntry for all SQL Servers returned by Get-DbaRegServer
 
     #>
     [CmdletBinding()]
@@ -185,7 +185,8 @@ function Resolve-DbaNetworkName {
             }
             if ($Turbo) {
                 # that's a finish line for a Turbo mode
-                return $result
+                $result
+                continue
             }
 
             # finding out which IP to use by pinging all of them. The first to respond is the one.

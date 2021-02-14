@@ -2,9 +2,8 @@
 param(
     [Collections.IDictionary]
     [Alias('Options')]
-    $Option = @{}
+    $Option = @{ }
 )
-
 
 $start = [DateTime]::Now
 
@@ -96,6 +95,8 @@ function Write-ImportTime {
 }
 
 Write-ImportTime -Text "Start" -Timestamp $start
+Write-ImportTime -Text "Loading System.Security"
+Add-Type -AssemblyName System.Security
 Write-ImportTime -Text "Loading import helper functions"
 #endregion Import helper functions
 
@@ -120,7 +121,7 @@ if ($psVersionTable.Platform -ne 'Unix' -and 'Microsoft.Win32.Registry' -as [Typ
     $regType = 'Microsoft.Win32.Registry' -as [Type]
     $hkcuNode = $regType::CurrentUser.OpenSubKey("SOFTWARE\Microsoft\WindowsPowerShell\dbatools\System")
     if ($dbaToolsSystemNode) {
-        $userValues = @{}
+        $userValues = @{ }
         foreach ($v in $hkcuNode.GetValueNames()) {
             $userValues[$v] = $hkcuNode.GetValue($v)
         }
@@ -128,15 +129,15 @@ if ($psVersionTable.Platform -ne 'Unix' -and 'Microsoft.Win32.Registry' -as [Typ
     }
     $hklmNode = $regType::LocalMachine.OpenSubKey("SOFTWARE\Microsoft\WindowsPowerShell\dbatools\System")
     if ($dbaToolsSystemNode) {
-        $systemValues = @{}
+        $systemValues = @{ }
         foreach ($v in $hklmNode.GetValueNames()) {
             $systemValues[$v] = $hklmNode.GetValue($v)
         }
         $dbatoolsSystemSystemNode = $systemValues
     }
 } else {
-    $dbatoolsSystemUserNode = @{}
-    $dbatoolsSystemSystemNode = @{}
+    $dbatoolsSystemUserNode = @{ }
+    $dbatoolsSystemSystemNode = @{ }
 }
 
 #region Dot Sourcing
@@ -196,7 +197,15 @@ if (($PSVersionTable.PSVersion.Major -le 5) -or $script:isWindows) {
 
 $script:DllRoot = (Resolve-Path -Path "$script:PSModuleRoot\bin\").ProviderPath
 
-if (-not ('Microsoft.SqlServer.Management.Smo.Server' -as [type])) {
+<#
+If dbatools has not been imported yet, it also hasn't done libraries yet. Fix that.
+Previously checked for SMO being available, but that would break import with SqlServer loaded
+Some people also use the dbatools library for other things without the module, so also check,
+whether the modulebase has been set (first thing it does after loading library through dbatools import)
+Theoretically, there's a minor cuncurrency collision risk with that, but since the cost is only
+a little import time loss if that happens ...
+#>
+if ((-not ('Sqlcollaborative.Dbatools.dbaSystem.DebugHost' -as [type])) -or (-not [Sqlcollaborative.Dbatools.dbaSystem.SystemHost]::ModuleBase)) {
     . $script:psScriptRoot\internal\scripts\libraryimport.ps1
     Write-ImportTime -Text "Starting import SMO libraries"
 }
@@ -261,7 +270,7 @@ if (-not ([Sqlcollaborative.Dbatools.Message.LogHost]::LoggingPath)) {
 # Note: Each optional file must include a conditional governing whether it's run at all.
 # Validations were moved into the other files, in order to prevent having to update dbatools.psm1 every time
 # 96ms
-foreach ($file in (Get-ChildItem -Path "$script:PSScriptRoot\optional" -filter *.ps1)) {
+foreach ($file in (Get-ChildItem -Path "$script:PSScriptRoot\optional" -Filter *.ps1)) {
     . $file.FullName
 }
 Write-ImportTime -Text "Loading Optional Commands"
@@ -291,6 +300,16 @@ Write-ImportTime -Text "Script: Asynchronous TEPP Cache"
 Write-ImportTime -Text "Script: Maintenance"
 
 #region Aliases
+
+# New 3-char aliases
+$shortcuts = @{
+    'ivq' = 'Invoke-DbaQuery'
+    'cdi' = 'Connect-DbaInstance'
+}
+foreach ($_ in $shortcuts.GetEnumerator()) {
+    New-Alias -Name $_.Key -Value $_.Value
+}
+
 # Leave forever
 $forever = @{
     'Get-DbaRegisteredServer' = 'Get-DbaRegServer'
@@ -375,6 +394,7 @@ $script:xplat = @(
     'Get-DbaLastBackup',
     'Connect-DbaInstance',
     'Get-DbaDbBackupHistory',
+    'Get-DbaAgBackupHistory',
     'Read-DbaBackupHeader',
     'Test-DbaLastBackup',
     'Get-DbaMaxMemory',
@@ -383,6 +403,12 @@ $script:xplat = @(
     'Remove-DbaDbSnapshot',
     'Get-DbaDbRoleMember',
     'Get-DbaServerRoleMember',
+    'Get-DbaDbAsymmetricKey',
+    'New-DbaDbAsymmetricKey',
+    'Remove-DbaDbAsymmetricKey',
+    'Invoke-DbaDbTransfer',
+    'New-DbaDbTransfer',
+    'Remove-DbaDbData',
     'Resolve-DbaNetworkName',
     'Export-DbaAvailabilityGroup',
     'Write-DbaDbTableData',
@@ -540,6 +566,7 @@ $script:xplat = @(
     'Select-DbaBackupInformation',
     'Publish-DbaDacPackage',
     'Copy-DbaDbTableData',
+    'Copy-DbaDbViewData',
     'Invoke-DbaQuery',
     'Remove-DbaLogin',
     'Get-DbaAgentJobCategory',
@@ -738,7 +765,20 @@ $script:xplat = @(
     'Get-DbaDbLogSpace',
     'Export-DbaDbRole',
     'Export-DbaServerRole',
-    'Add-DbaServerRoleMember'
+    'Get-DbaBuildReference',
+    'Update-DbaBuildReference',
+    'Install-DbaFirstResponderKit',
+    'Install-DbaWhoIsActive',
+    'Update-Dbatools',
+    'Add-DbaServerRoleMember',
+    'Get-DbatoolsPath',
+    'Set-DbatoolsPath',
+    'Export-DbaSysDbUserObject',
+    'Test-DbaDbQueryStore',
+    'Install-DbaMultiTool',
+    'New-DbaAgentOperator',
+    'Remove-DbaAgentOperator',
+    'Remove-DbaDbTableData'
 )
 
 $script:noncoresmo = @(
@@ -760,7 +800,8 @@ $script:noncoresmo = @(
     'Get-DbaRepPublication',
     'Test-DbaRepLatency',
     'Export-DbaRepServerSetting',
-    'Get-DbaRepServer'
+    'Get-DbaRepServer',
+    'Move-DbaDbFile'
 )
 $script:windowsonly = @(
     # solvable filesystem issues or other workarounds
@@ -773,20 +814,18 @@ $script:windowsonly = @(
     'Export-DbaScript',
     'Get-DbaAgentJobOutputFile',
     'Set-DbaAgentJobOutputFile',
-    'Get-DbaBuildReference',
-    'New-DbaDacProfile'
+    'New-DbaDacProfile',
     'Import-DbaXESessionTemplate',
     'Export-DbaXESessionTemplate',
     'Import-DbaSpConfigure',
-    'Export-DbaSpConfigure'
-    'Update-Dbatools',
-    'Install-DbaWhoIsActive',
-    'Install-DbaFirstResponderKit',
+    'Export-DbaSpConfigure',
     'Read-DbaXEFile',
     'Watch-DbaXESession',
     'Test-DbaMaxMemory', # can be fixed by not testing remote when linux is detected
     'Rename-DbaDatabase', # can maybebe fixed by not remoting when linux is detected
     # CM and Windows functions
+    'Get-DbaExtendedProtection',
+    'Set-DbaExtendedProtection',
     'Install-DbaInstance',
     'Invoke-DbaAdvancedInstall',
     'Update-DbaInstance',
@@ -846,6 +885,10 @@ $script:windowsonly = @(
     'Enable-DbaForceNetworkEncryption',
     'Disable-DbaForceNetworkEncryption',
     'Get-DbaForceNetworkEncryption',
+    'Get-DbaHideInstance',
+    'Enable-DbaHideInstance',
+    'Disable-DbaHideInstance',
+    'New-DbaComputerCertificateSigningRequest',
     'Remove-DbaComputerCertificate',
     'New-DbaComputerCertificate',
     'Get-DbaComputerCertificate',
@@ -853,6 +896,7 @@ $script:windowsonly = @(
     'Backup-DbaComputerCertificate',
     'Get-DbaNetworkCertificate',
     'Set-DbaNetworkCertificate',
+    'Remove-DbaDbLogshipping',
     'Invoke-DbaDbLogShipping',
     'New-DbaCmConnection',
     'Get-DbaCmConnection',
@@ -900,7 +944,7 @@ $script:windowsonly = @(
 )
 
 # If a developer or appveyor calls the psm1 directly, they want all functions
-# So do not explicity export because everything else is then implicity excluded
+# So do not explicitly export because everything else is then implicitly excluded
 if (-not $script:multiFileImport) {
     $exports =
     @(if (($PSVersionTable.Platform)) {
@@ -923,6 +967,9 @@ if (-not $script:multiFileImport) {
         }
         foreach ($k in $script:Forever.Keys) {
             $k
+        }
+        foreach ($c in $script:shortcuts.Keys) {
+            $c
         }
     )
 

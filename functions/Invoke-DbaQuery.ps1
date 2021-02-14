@@ -33,9 +33,9 @@ function Invoke-DbaQuery {
         Specify one or more SQL objects. Those will be converted to script and their scripts run on the target system(s).
 
     .PARAMETER As
-        Specifies output type. Valid options for this parameter are 'DataSet', 'DataTable', 'DataRow', 'PSObject', and 'SingleValue'
+        Specifies output type. Valid options for this parameter are 'DataSet', 'DataTable', 'DataRow', 'PSObject', 'PSObjectArray', and 'SingleValue'
 
-        PSObject output introduces overhead but adds flexibility for working with results: http://powershell.org/wp/forums/topic/dealing-with-dbnull/
+        PSObject and PSObjectArray output introduces overhead but adds flexibility for working with results: http://powershell.org/wp/forums/topic/dealing-with-dbnull/
 
     .PARAMETER SqlParameters
         Specifies a hashtable of parameters for parameterized SQL queries.  http://blog.codinghorror.com/give-me-parameterized-sql-or-give-me-death/
@@ -44,7 +44,7 @@ function Invoke-DbaQuery {
         If this switch is enabled, the SQL Server instance will be appended to PSObject and DataRow output.
 
     .PARAMETER MessagesToOutput
-        Use this switch to have on the output stream messages too (e.g. PRINT statements). Output will hold the resultset too. See examples for detail
+        Use this switch to have on the output stream messages too (e.g. PRINT statements). Output will hold the resultset too.
 
     .PARAMETER InputObject
         A collection of databases (such as returned by Get-DbaDatabase)
@@ -56,6 +56,9 @@ function Invoke-DbaQuery {
 
     .PARAMETER ReadOnly
         Execute the query with ReadOnly application intent.
+
+    .PARAMETER CommandType
+        Specifies the type of command represented by the query string.  Default is Text
 
     .NOTES
         Tags: Database, Query
@@ -100,6 +103,20 @@ function Invoke-DbaQuery {
         PS C:\> Invoke-DbaQuery -SqlInstance aglistener1 -ReadOnly -Query "select something from readonlydb.dbo.atable"
 
         Executes a query with ReadOnly application intent on aglistener1.
+
+    .EXAMPLE
+        PS C:\> Invoke-DbaQuery -SqlInstance "server1" -Database tempdb -Query "Example_SP" -SqlParameters @{ Name = "Maria" } -CommandType StoredProcedure
+
+        Executes a stored procedure Example_SP using SQL Parameters
+
+    .EXAMPLE
+        PS C:\> $QueryParameters = @{
+            "StartDate" = $startdate;
+            "EndDate" = $enddate;
+        };
+        PS C:\> Invoke-DbaQuery -SqlInstance "server1" -Database tempdb -Query "Example_SP" -SqlParameters $QueryParameters -CommandType StoredProcedure
+
+        Executes a stored procedure Example_SP using multiple SQL Parameters
     #>
     [CmdletBinding(DefaultParameterSetName = "Query")]
     param (
@@ -115,9 +132,10 @@ function Invoke-DbaQuery {
         [object[]]$File,
         [Parameter(Mandatory, ParameterSetName = "SMO")]
         [Microsoft.SqlServer.Management.Smo.SqlSmoObject[]]$SqlObject,
-        [ValidateSet("DataSet", "DataTable", "DataRow", "PSObject", "SingleValue")]
+        [ValidateSet("DataSet", "DataTable", "DataRow", "PSObject", "PSObjectArray", "SingleValue")]
         [string]$As = "DataRow",
         [System.Collections.IDictionary]$SqlParameters,
+        [System.Data.CommandType]$CommandType = 'Text',
         [switch]$AppendServerInstance,
         [switch]$MessagesToOutput,
         [parameter(ValueFromPipeline)]
@@ -130,7 +148,8 @@ function Invoke-DbaQuery {
         Write-Message -Level Debug -Message "Bound parameters: $($PSBoundParameters.Keys -join ", ")"
 
         $splatInvokeDbaSqlAsync = @{
-            As = $As
+            As          = $As
+            CommandType = $CommandType
         }
 
         if (Test-Bound -ParameterName "SqlParameters") {
@@ -182,11 +201,20 @@ function Invoke-DbaQuery {
                         $files += $item.FullName
                     }
                     "System.String" {
-                        $uri = [uri]$item
+                        try {
+                            if (Test-PsVersion -Is 3) {
+                                $uri = [uri]$item
+                            } else {
+                                $uri = [uri]::New($item)
+                            }
+                            $uriScheme = $uri.Scheme
+                        } catch {
+                            $uriScheme = $null
+                        }
 
-                        switch -regex ($uri.Scheme) {
+                        switch -regex ($uriScheme) {
                             "http" {
-                                $tempfile = "$env:TEMP\$temporaryFilesPrefix-$temporaryFilesCount.sql"
+                                $tempfile = "$(Get-DbatoolsPath -Name temp)\$temporaryFilesPrefix-$temporaryFilesCount.sql"
                                 try {
                                     try {
                                         Invoke-TlsWebRequest -Uri $item -OutFile $tempfile -ErrorAction Stop
@@ -212,9 +240,16 @@ function Invoke-DbaQuery {
 
                                 foreach ($path in $paths) {
                                     if (-not $path.PSIsContainer) {
-                                        if (([uri]$path.FullName).Scheme -ne 'file') {
-                                            Stop-Function -Message "Could not resolve path $path as filesystem object"
-                                            return
+                                        if (Test-PsVersion -Is 3) {
+                                            if (([uri]$path.FullName).Scheme -ne 'file') {
+                                                Stop-Function -Message "Could not resolve path $path as filesystem object"
+                                                return
+                                            }
+                                        } else {
+                                            if ([uri]::New($path).Scheme -ne 'file') {
+                                                Stop-Function -Message "Could not resolve path $path as filesystem object"
+                                                return
+                                            }
                                         }
                                         $files += $path.FullName
                                     }
@@ -244,7 +279,7 @@ function Invoke-DbaQuery {
                 }
 
                 try {
-                    $newfile = "$env:TEMP\$temporaryFilesPrefix-$temporaryFilesCount.sql"
+                    $newfile = "$(Get-DbatoolsPath -Name temp)\$temporaryFilesPrefix-$temporaryFilesCount.sql"
                     Set-Content -Value $code -Path $newfile -Force -ErrorAction Stop -Encoding UTF8
                     $files += $newfile
                     $temporaryFilesCount++
@@ -265,6 +300,10 @@ function Invoke-DbaQuery {
         }
         if (Test-Bound -ParameterName "SqlInstance", "InputObject" -And) {
             Stop-Function -Category InvalidArgument -Message "You can't use -SqlInstance with piped databases"
+            return
+        }
+        if (Test-Bound -ParameterName "SqlInstance", "InputObject" -Not) {
+            Stop-Function -Category InvalidArgument -Message "Please provide either SqlInstance or InputObject"
             return
         }
 
@@ -294,6 +333,7 @@ function Invoke-DbaQuery {
             }
         }
         foreach ($instance in $SqlInstance) {
+            Write-Message -Level Debug -Message "SqlInstance passed in, will work on: $instance"
             try {
                 $connDbaInstanceParams = @{
                     SqlInstance   = $instance
@@ -301,6 +341,7 @@ function Invoke-DbaQuery {
                     Database      = $Database
                 }
                 if ($ReadOnly) {
+                    # TODO: This will not work, if SqlInstance is already a server object
                     $connDbaInstanceParams.ApplicationIntent = "ReadOnly"
                 }
                 $server = Connect-DbaInstance @connDbaInstanceParams
@@ -309,10 +350,12 @@ function Invoke-DbaQuery {
             }
             $conncontext = $server.ConnectionContext
             try {
-                if ($Database -and $conncontext.DatabaseName -ne $Database) {
-                    #$conncontext = $server.ConnectionContext.Copy()
-                    #$conncontext.DatabaseName = $Database
-                    $conncontext = $server.ConnectionContext.Copy().GetDatabaseConnection($Database)
+                if (-not (Get-DbatoolsConfigValue -FullName sql.connection.experimental)) {
+                    if ($Database -and $conncontext.DatabaseName -ne $Database) {
+                        #$conncontext = $server.ConnectionContext.Copy()
+                        #$conncontext.DatabaseName = $Database
+                        $conncontext = $server.ConnectionContext.Copy().GetDatabaseConnection($Database)
+                    }
                 }
                 if ($File -or $SqlObject) {
                     foreach ($item in $files) {

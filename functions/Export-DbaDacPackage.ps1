@@ -16,9 +16,7 @@ function Export-DbaDacPackage {
     .PARAMETER SqlCredential
         Login to the target instance using alternative credentials. Accepts PowerShell credentials (Get-Credential).
 
-        Windows Authentication, SQL Server Authentication, Active Directory - Password, and Active Directory - Integrated are all supported.
-
-        For MFA support, please use Connect-DbaInstance.
+        Only SQL authentication is supported. When not specified, uses Trusted Authentication.
 
     .PARAMETER Path
         Specifies the directory where the file or files will be exported.
@@ -69,27 +67,27 @@ function Export-DbaDacPackage {
         https://dbatools.io/Export-DbaDacPackage
 
     .EXAMPLE
-        PS C:\> Export-DbaDacPackage -SqlInstance sql2016 -Database SharePoint_Config
+        PS C:\> Export-DbaDacPackage -SqlInstance sql2016 -Database SharePoint_Config -FilePath C:\SharePoint_Config.dacpac
 
-        Exports the dacpac for SharePoint_Config on sql2016 to $home\Documents\SharePoint_Config.dacpac
+        Exports the dacpac for SharePoint_Config on sql2016 to C:\SharePoint_Config.dacpac
 
     .EXAMPLE
         PS C:\> $options = New-DbaDacOption -Type Dacpac -Action Export
         PS C:\> $options.ExtractAllTableData = $true
         PS C:\> $options.CommandTimeout = 0
-        PS C:\> Export-DbaDacPackage -SqlInstance sql2016 -Database DB1 -Options $options
+        PS C:\> Export-DbaDacPackage -SqlInstance sql2016 -Database DB1 -DacOption $options
 
-        Uses DacOption object to set the CommandTimeout to 0 then extracts the dacpac for DB1 on sql2016 to $home\Documents\DB1.dacpac including all table data.
+        Uses DacOption object to set the CommandTimeout to 0 then extracts the dacpac for DB1 on sql2016 to C:\Users\username\Documents\DbatoolsExport\sql2016-DB1-20201227140759-dacpackage.dacpac including all table data. As noted the generated filename will contain the server name, database name, and the current timestamp in the "%Y%m%d%H%M%S" format.
 
     .EXAMPLE
         PS C:\> Export-DbaDacPackage -SqlInstance sql2016 -AllUserDatabases -ExcludeDatabase "DBMaintenance","DBMonitoring" -Path "C:\temp"
-        Exports dacpac packages for all USER databases, excluding "DBMaintenance" & "DBMonitoring", on sql2016 and saves them to C:\temp
+        Exports dacpac packages for all USER databases, excluding "DBMaintenance" & "DBMonitoring", on sql2016 and saves them to C:\temp. The generated filename(s) will contain the server name, database name, and the current timestamp in the "%Y%m%d%H%M%S" format.
 
     .EXAMPLE
         PS C:\> $moreparams = "/OverwriteFiles:$true /Quiet:$true"
         PS C:\> Export-DbaDacPackage -SqlInstance sql2016 -Database SharePoint_Config -Path C:\temp -ExtendedParameters $moreparams
 
-        Using extended parameters to over-write the files and performs the extraction in quiet mode. Uses command line instead of SMO behind the scenes.
+        Using extended parameters to over-write the files and performs the extraction in quiet mode to C:\temp\sql2016-SharePoint_Config-20201227140759-dacpackage.dacpac. Uses command line instead of SMO behind the scenes. As noted the generated filename will contain the server name, database name, and the current timestamp in the "%Y%m%d%H%M%S" format.
     #>
     [CmdletBinding(DefaultParameterSetName = 'SMO')]
     param
@@ -179,11 +177,11 @@ function Export-DbaDacPackage {
             $tblList = $null
         }
 
-        foreach ($instance in $sqlinstance) {
+        foreach ($instance in $SqlInstance) {
             try {
-                $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $sqlcredential
+                $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $SqlCredential
             } catch {
-                Stop-Function -Message "Error occurred while establishing connection to $instance" -Category ConnectionError -ErrorRecord $_ -Target $instance -Continue
+                Stop-Function -Message "Error occurred while establishing connection to $instance"-Category ConnectionError -ErrorRecord $_ -Target $instance -Continue
             }
             if ($Database) {
                 $dbs = Get-DbaDatabase -SqlInstance $server -OnlyAccessible -Database $Database -ExcludeDatabase $ExcludeDatabase
@@ -192,15 +190,15 @@ function Export-DbaDacPackage {
                 $dbs = Get-DbaDatabase -SqlInstance $server -OnlyAccessible -ExcludeSystem -ExcludeDatabase $ExcludeDatabase
             }
             if (-not $dbs) {
-                Stop-Function -Message "Databases not found on $instance" -Target $instance -Continue
+                Stop-Function -Message "Databases not found on $instance"-Target $instance -Continue
             }
 
             foreach ($db in $dbs) {
                 $resultstime = [diagnostics.stopwatch]::StartNew()
-                $dbname = $db.name
+                $dbName = $db.name
                 $connstring = $server.ConnectionContext.ConnectionString
                 if ($connstring -notmatch 'Database=') {
-                    $connstring = "$connstring;Database=$dbname"
+                    $connstring = "$connstring;Database=$dbName"
                 }
 
                 Write-Message -Level Verbose -Message "Using connection string $connstring"
@@ -211,14 +209,14 @@ function Export-DbaDacPackage {
                     $ext = 'bacpac'
                 }
 
-                $FilePath = Get-ExportFilePath -Path $PSBoundParameters.Path -FilePath $PSBoundParameters.FilePath -Type $ext -ServerName $instance
+                $FilePath = Get-ExportFilePath -Path $PSBoundParameters.Path -FilePath $PSBoundParameters.FilePath -Type $ext -ServerName $instance -DatabaseName $dbName
 
                 #using SMO by default
                 if ($PsCmdlet.ParameterSetName -eq 'SMO') {
                     try {
                         $dacSvc = New-Object -TypeName Microsoft.SqlServer.Dac.DacServices -ArgumentList $connstring -ErrorAction Stop
                     } catch {
-                        Stop-Function -Message "Could not connect to the connection string $connstring" -Target $instance -Continue
+                        Stop-Function -Message "Could not connect to the connection string $connstring"-Target $instance -Continue
                     }
                     if (-not $DacOption) {
                         $opts = New-DbaDacOption -Type $Type -Action Export
@@ -233,7 +231,7 @@ function Export-DbaDacPackage {
                         #not sure how to extract that info from the existing DAC application, leaving 1.0.0.0 for now
                         $version = New-Object System.Version -ArgumentList '1.0.0.0'
                         try {
-                            $dacSvc.Extract($FilePath, $dbname, $dbname, $version, $null, $tblList, $opts, $null)
+                            $dacSvc.Extract($FilePath, $dbName, $dbName, $version, $null, $tblList, $opts, $null)
                         } catch {
                             Stop-Function -Message "DacServices extraction failure" -ErrorRecord $_ -Continue
                         } finally {
@@ -242,7 +240,7 @@ function Export-DbaDacPackage {
                     } elseif ($Type -eq 'Bacpac') {
                         Write-Message -Level Verbose -Message "Initiating Bacpac export to $FilePath"
                         try {
-                            $dacSvc.ExportBacpac($FilePath, $dbname, $opts, $tblList, $null)
+                            $dacSvc.ExportBacpac($FilePath, $dbName, $opts, $tblList, $null)
                         } catch {
                             Stop-Function -Message "DacServices export failure" -ErrorRecord $_ -Continue
                         } finally {
@@ -278,14 +276,14 @@ function Export-DbaDacPackage {
                     }
 
                     if ($process.ExitCode -ne 0) {
-                        Stop-Function -Message "Standard output - $stderr" -Continue
+                        Stop-Function -Message "Standard output - $stderr"-Continue
                     }
                 }
                 [pscustomobject]@{
                     ComputerName = $server.ComputerName
                     InstanceName = $server.ServiceName
                     SqlInstance  = $server.DomainInstanceName
-                    Database     = $dbname
+                    Database     = $dbName
                     Path         = $FilePath
                     Elapsed      = [prettytimespan]($resultstime.Elapsed)
                     Result       = $finalResult

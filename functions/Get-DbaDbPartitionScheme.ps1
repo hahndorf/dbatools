@@ -35,6 +35,9 @@ function Get-DbaDbPartitionScheme {
         Copyright: (c) 2018 by dbatools, licensed under MIT
         License: MIT https://opensource.org/licenses/MIT
 
+    .LINK
+        https://dbatools.io/Get-DbaDbPartitionScheme
+
     .EXAMPLE
         PS C:\> Get-DbaDbPartitionScheme -SqlInstance sql2016
 
@@ -69,7 +72,7 @@ function Get-DbaDbPartitionScheme {
     process {
         foreach ($instance in $SqlInstance) {
             try {
-                $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $sqlcredential
+                $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $SqlCredential
             } catch {
                 Stop-Function -Message "Error occurred while establishing connection to $instance" -Category ConnectionError -ErrorRecord $_ -Target $instance -Continue
             }
